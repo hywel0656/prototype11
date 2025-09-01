@@ -1,0 +1,10 @@
+streamlit
+openai
+sentence-transformers
+gspread
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+torch
+transformers
+oauth2client
