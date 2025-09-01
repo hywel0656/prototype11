@@ -5,7 +5,6 @@ from sentence_transformers import SentenceTransformer, util
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import difflib
 
 # --- Settings ---
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
@@ -17,21 +16,25 @@ THRESHOLD = 0.80  # Passing score
 def get_gsheet():
     """Authorizes with Google Sheets and returns the sheet object."""
     try:
-        # Check for local credentials.json first
-        if "credentials.json" in os.listdir():
-            creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
-        # Fallback to Streamlit secrets
-        elif st.secrets.get("gcp_service_account"):
+        # Debug: Show available secrets keys
+        st.write("🔍 Available secrets keys:", list(st.secrets.keys()))
+
+        # Debug: Show contents of gcp_service_account if present
+        if "gcp_service_account" in st.secrets:
+            st.write("✅ gcp_service_account loaded:", st.secrets["gcp_service_account"])
             creds = Credentials.from_service_account_info(
                 st.secrets["gcp_service_account"], scopes=SCOPES
             )
+        elif "credentials.json" in os.listdir():
+            creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
         else:
-            st.warning("Google credentials not configured.")
+            st.warning("⚠️ Google credentials not configured.")
             return None
+
         client = gspread.authorize(creds)
         return client.open_by_key(SPREADSHEET_ID).sheet1
     except Exception as e:
-        st.error(f"Error connecting to Google Sheets: {e}")
+        st.error(f"❌ Error connecting to Google Sheets: {e}")
         return None
 
 sheet = get_gsheet()
@@ -39,14 +42,12 @@ sheet = get_gsheet()
 # --- Load sentence transformer model ---
 @st.cache_resource
 def load_model():
-    """Loads the sentence transformer model for similarity scoring."""
     return SentenceTransformer("paraphrase-MiniLM-L3-v2")
 
 model = load_model()
 
 # --- Load translations ---
 def load_translations(file_path="data/translations.json"):
-    """Loads translation data from a JSON file."""
     if not os.path.exists(file_path):
         st.error("Translation file not found.")
         return []
@@ -58,7 +59,6 @@ japanese_to_entry = {entry["japanese"]: entry for entry in translations}
 
 # --- Helper functions ---
 def compute_score_and_best(user_text, variants):
-    """Computes similarity score between user input and correct translations."""
     embeddings = model.encode([user_text] + variants, convert_to_tensor=True)
     scores = util.pytorch_cos_sim(embeddings[0], embeddings[1:])
     best_idx = scores.argmax().item()
@@ -105,11 +105,9 @@ if st.button("🔍 Try Translation"):
         st.session_state.last_score = best_score
         st.session_state.last_variant = best_variant
         st.session_state.attempted_questions += 1
-        
-        # Display the number of questions attempted
+
         st.markdown(f"**Questions attempted:** {st.session_state.attempted_questions}")
 
-        # Display only the score
         if best_score >= THRESHOLD:
             st.success(f"✅ Good enough! Score: {best_score:.2f}")
         else:
@@ -122,7 +120,6 @@ if st.button("✅ Submit this translation"):
     elif user_input.strip() == "":
         st.warning("Please enter a translation before submitting.")
     else:
-        # Calculate score if "Try Translation" hasn't been clicked first
         if st.session_state.last_score is None:
             all_variants = [entry["english"]] + entry.get("alternatives", [])
             best_score, best_variant = compute_score_and_best(user_input, all_variants)
@@ -132,7 +129,6 @@ if st.button("✅ Submit this translation"):
         st.session_state.scores.append(best_score)
         st.success(f"✅ Translation score recorded locally: {best_score:.2f}")
 
-        # Reset session state for the next question
         st.session_state.last_score = None
         st.session_state.last_variant = None
 
@@ -159,7 +155,6 @@ if st.button("🏁 Finish Session and Submit Average Score"):
                     number_of_questions
                 ])
                 st.success(f"🏁 Session finished! Average score {average_score:.2f} submitted.")
-                # Clear session state for a new session
                 st.session_state.scores = []
                 st.session_state.attempted_questions = 0
             except Exception as e:
